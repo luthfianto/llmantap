@@ -129,12 +129,9 @@ def process_stream2(body: ModelKwargs):
 
     t2 = Thread(target=log_after_stream_complete)
     t2.start()
-    response = ""
 
     for new_text in streamer:
-        response += new_text
-        print(new_text)
-        yield response
+        yield new_text
 
 
 from fastapi.responses import StreamingResponse
