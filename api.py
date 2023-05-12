@@ -1,4 +1,3 @@
-from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
@@ -7,7 +6,7 @@ from fastapi.responses import StreamingResponse
 app = FastAPI()
 
 
-class ModelKwargs(BaseModel):
+class MptModelKwargs(BaseModel):
     instruction: str = "Hi, how are you?"
     temperature: float = 0.5
     top_p: float = 0.92
@@ -19,9 +18,6 @@ class ModelKwargs(BaseModel):
     # stop_tokens
     # presence_penalty
     # frequency_penalty
-
-
-app = FastAPI()
 
 
 import os
@@ -57,80 +53,8 @@ class StopOnTokens(StoppingCriteria):
                 return True
         return False
 
-# # Initialize the model and tokenizer
-# print("mosaicml/mpt-7b-instruct")
-# generate_instruct = pipeline(
-#     "mosaicml/mpt-7b-instruct",
-#     # "gpt2",
-#     torch_dtype=torch.bfloat16,
-#     trust_remote_code=True,
-#     use_auth_token=HF_TOKEN,
-# )
-# stop_token_ids_instruct = generate_instruct.tokenizer.convert_tokens_to_ids(["<|endoftext|>"])
 
-# def process_stream_instruct(body: ModelKwargs):
-#     print(body.instruction)
-#     # Tokenize the input
-#     input_ids = generate_instruct.tokenizer(
-#         generate_instruct.format_instruction(body.instruction), return_tensors="pt"
-#     ).input_ids
-#     input_ids = input_ids.to(generate_instruct.model.device)
-
-#     # Initialize the streamer and stopping criteria
-#     streamer = TextIteratorStreamer(
-#         generate_instruct.tokenizer, timeout=100.0, skip_prompt=True, skip_special_tokens=True
-#     )
-#     stop = StopOnTokens()
-
-#     if body.temperature < 0.1:
-#         body.temperature = 0.0
-#         body.do_sample = False
-#     else:
-#         body.do_sample = True
-
-#     body2 = dict(body)
-#     del body2["instruction"]
-#     print(body2)
-
-#     gkw = {
-#         **generate_instruct.generate_instruct_kwargs,
-#         **body2,
-#         **{
-#             "input_ids": input_ids,
-#             "streamer": streamer,
-#             "stopping_criteria": StoppingCriteriaList([stop]),
-#         },
-#     }
-
-#     stream_complete = Event()
-
-#     def generate_instruct_and_signal_complete():
-#         generate_instruct.model.generate_instruct(**gkw)
-#         stream_complete.set()
-
-#     def log_after_stream_complete():
-#         stream_complete.wait()
-
-#     t1 = Thread(target=generate_instruct_and_signal_complete)
-#     t1.start()
-
-#     t2 = Thread(target=log_after_stream_complete)
-#     t2.start()
-
-#     for new_text in streamer:
-#         yield new_text
-
-# @app.post("/llm/")
-# async def create_item(body: ModelKwargs):
-#     stream = process_stream_instruct(body)
-#     return StreamingResponse(stream)
-
-# @app.post("/instruct/")
-# async def create_instruct(body: ModelKwargs):
-#     stream = process_stream_instruct(body)
-#     return StreamingResponse(stream)
-
-def process_stream_chat(body: ModelKwargs):
+def process_stream_chat(body: MptModelKwargs):
     # Tokenize the input
     input_ids = generate_chat.tokenizer(
         generate_chat.format_instruction(body.instruction), return_tensors="pt"
@@ -139,7 +63,10 @@ def process_stream_chat(body: ModelKwargs):
 
     # Initialize the streamer and stopping criteria
     streamer = TextIteratorStreamer(
-        generate_chat.tokenizer, timeout=100.0, skip_prompt=True, skip_special_tokens=True
+        generate_chat.tokenizer,
+        timeout=100.0,
+        skip_prompt=True,
+        skip_special_tokens=True,
     )
     stop = StopOnTokens()
 
@@ -183,10 +110,27 @@ def process_stream_chat(body: ModelKwargs):
 
 
 @app.post("/chat/")
-async def create_chat(body: ModelKwargs):
-    stream = process_stream_chat(body)
-    return StreamingResponse(stream)
+async def create_chat(body: MptModelKwargs, stream=False):
+    print(body.instruction)
+    stream_chat = process_stream_chat(body)
+    if stream:
+        return StreamingResponse(stream_chat, media_type="text/event-stream")
+    return StreamingResponse(stream_chat)
 
+
+from InstructorEmbedding import INSTRUCTOR
+
+model = INSTRUCTOR("hkunlp/instructor-large")
+sentence = "3D ActionSLAM: wearable person tracking in multi-floor environments"
+instruction = "Represent the Science title:"
+
+
+@app.post("/instructor-embedding/")
+def instructor_embedding(
+    body: list[list[str, str]] = [[instruction, sentence]]
+) -> list[list[float]]:
+    e = model.encode(body)
+    return e.tolist()
 
 
 if __name__ == "__main__":
