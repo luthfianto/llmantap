@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException, Depends
 from pydantic import BaseModel
 import uvicorn
 from fastapi.responses import StreamingResponse
@@ -109,8 +109,19 @@ def process_stream_chat(body: MptModelKwargs):
         yield new_text
 
 
+API_KEY = ""
+
+
+def verify_api_key(api_key: str = Header(...)):
+    if api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return True
+
+
 @app.post("/chat/")
-async def create_chat(body: MptModelKwargs, stream=False):
+async def create_chat(
+    body: MptModelKwargs, api_key_valid: bool = Depends(verify_api_key), stream=False
+):
     print(body.instruction)
     stream_chat = process_stream_chat(body)
     if stream:
@@ -127,7 +138,8 @@ instruction = "Represent the Science title:"
 
 @app.post("/instructor-embedding/")
 def instructor_embedding(
-    body: list[list[str, str]] = [[instruction, sentence]]
+    api_key_valid: bool = Depends(verify_api_key),
+    body: list[list[str, str]] = [[instruction, sentence]],
 ) -> list[list[float]]:
     e = model.encode(body)
     return e.tolist()
